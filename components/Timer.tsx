@@ -17,18 +17,29 @@ function formatTime(s: number) {
   return `${m}:${sec.toString().padStart(2, '0')}`
 }
 
+// Hourglass SVG geometry
+const W = 80
+const H = 140
+const PAD = 6
+const NECK = 5  // half-width at neck
+
+const topPath   = `M${PAD},${PAD} L${W - PAD},${PAD} L${W/2 + NECK},${H/2} L${W/2 - NECK},${H/2} Z`
+const botPath   = `M${W/2 - NECK},${H/2} L${W/2 + NECK},${H/2} L${W - PAD},${H - PAD} L${PAD},${H - PAD} Z`
+const outerPath = `M${PAD},${PAD} L${W - PAD},${PAD} L${W/2 + NECK},${H/2} L${W - PAD},${H - PAD} L${PAD},${H - PAD} L${W/2 - NECK},${H/2} Z`
+
 export default function Timer({ durationSeconds, color, onComplete, onCancel }: TimerProps) {
   const [remaining, setRemaining] = useState(durationSeconds)
   const [paused, setPaused] = useState(false)
 
-  const pausedRef = useRef(false)
-  const startRef = useRef(Date.now())
+  const pausedRef      = useRef(false)
+  const startRef       = useRef(Date.now())
   const totalPausedRef = useRef(0)
-  const pausedAtRef = useRef<number | null>(null)
-  const doneRef = useRef(false)
-  const onCompleteRef = useRef(onComplete)
-
+  const pausedAtRef    = useRef<number | null>(null)
+  const doneRef        = useRef(false)
+  const onCompleteRef  = useRef(onComplete)
   useEffect(() => { onCompleteRef.current = onComplete })
+  const onCancelRef    = useRef(onCancel)
+  useEffect(() => { onCancelRef.current = onCancel })
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -58,10 +69,25 @@ export default function Timer({ durationSeconds, color, onComplete, onCancel }: 
     }
   }
 
-  const radius = 100
-  const circumference = 2 * Math.PI * radius
-  // starts at 0 (full circle), increases to circumference (empty) as time passes
-  const strokeDashoffset = circumference * (1 - remaining / durationSeconds)
+  const handleEnd = () => {
+    if (!doneRef.current) {
+      doneRef.current = true
+      onCancelRef.current()
+    }
+  }
+
+  const progress = 1 - remaining / durationSeconds  // 0 → 1 as time passes
+
+  // Sand levels
+  const topHalf   = H / 2 - PAD                     // height of top compartment
+  const botHalf   = H / 2 - PAD
+  const topFill   = topHalf * (1 - progress)         // shrinks top to bottom
+  const botFill   = botHalf * progress               // grows from bottom
+  const topSandY  = PAD                              // sand rect top y
+  const botSandY  = H / 2 + (botHalf - botFill)     // sand rect top y in bottom compartment
+
+  // Drip: a small line at the neck that pulses when not paused
+  const drip = !paused && progress > 0 && progress < 1
 
   return (
     <motion.div
@@ -71,60 +97,114 @@ export default function Timer({ durationSeconds, color, onComplete, onCancel }: 
       exit={{ opacity: 0 }}
       transition={{ duration: 0.8 }}
     >
-      <div className="relative flex items-center justify-center mb-16">
-        {/* Breathing glow */}
+      {/* Hourglass */}
+      <div className="relative flex items-center justify-center mb-14" style={{ width: 160, height: 280 }}>
+
+        {/* Glow behind */}
         <motion.div
-          className="absolute rounded-full"
-          style={{ width: 260, height: 260, backgroundColor: color, opacity: 0.04 }}
-          animate={{ scale: [1, 1.06, 1] }}
+          className="absolute rounded-full pointer-events-none"
+          style={{ width: 120, height: 120, backgroundColor: color, filter: 'blur(40px)', opacity: 0.12 }}
+          animate={{ opacity: paused ? 0.05 : [0.08, 0.16, 0.08] }}
           transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
         />
 
-        <svg width={260} height={260} className="absolute" style={{ transform: 'rotate(-90deg)' }}>
-          {/* Track */}
-          <circle cx={130} cy={130} r={radius} fill="none" stroke={color} strokeWidth={1} opacity={0.12} />
-          {/* Depleting arc */}
-          <circle
-            cx={130} cy={130} r={radius}
+        <svg
+          width={W * 2}
+          height={H * 2}
+          viewBox={`0 0 ${W} ${H}`}
+          style={{ overflow: 'visible' }}
+        >
+          <defs>
+            <clipPath id="top-clip">
+              <path d={topPath} />
+            </clipPath>
+            <clipPath id="bot-clip">
+              <path d={botPath} />
+            </clipPath>
+            <filter id="sand-glow">
+              <feGaussianBlur stdDeviation="1.5" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
+
+          {/* Outer hourglass outline */}
+          <path
+            d={outerPath}
             fill="none"
             stroke={color}
-            strokeWidth={1.5}
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={strokeDashoffset}
-            style={{ transition: 'stroke-dashoffset 0.25s linear' }}
+            strokeWidth={0.6}
+            opacity={0.25}
           />
-        </svg>
 
-        <div className="flex flex-col items-center gap-1.5 relative z-10">
-          <span className="font-serif text-5xl font-light tracking-tight" style={{ color }}>
-            {formatTime(remaining)}
-          </span>
-          {paused && (
-            <span className="text-white/30 text-xs tracking-widest uppercase">paused</span>
+          {/* Top sand */}
+          <rect
+            x={0} y={topSandY}
+            width={W} height={topFill}
+            fill={color}
+            opacity={0.55}
+            clipPath="url(#top-clip)"
+            style={{ transition: 'height 0.3s linear, y 0s' }}
+            filter="url(#sand-glow)"
+          />
+
+          {/* Bottom sand */}
+          <rect
+            x={0} y={botSandY}
+            width={W} height={botFill}
+            fill={color}
+            opacity={0.7}
+            clipPath="url(#bot-clip)"
+            style={{ transition: 'height 0.3s linear, y 0.3s linear' }}
+            filter="url(#sand-glow)"
+          />
+
+          {/* Drip at neck */}
+          {drip && (
+            <motion.circle
+              cx={W / 2} cy={H / 2}
+              r={1.2}
+              fill={color}
+              opacity={0.9}
+              animate={{ opacity: [0.9, 0.3, 0.9], cy: [H / 2, H / 2 + 3, H / 2] }}
+              transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+            />
           )}
-        </div>
+        </svg>
       </div>
 
-      <div className="flex items-center gap-10">
+      {/* Time */}
+      <motion.span
+        className="text-sm font-light tracking-widest mb-12"
+        style={{ color, opacity: 0.5 }}
+        animate={{ opacity: paused ? [0.3, 0.6, 0.3] : 0.5 }}
+        transition={{ duration: paused ? 1.2 : 0, repeat: paused ? Infinity : 0 }}
+      >
+        {paused ? 'paused' : formatTime(remaining)}
+      </motion.span>
+
+      {/* Controls */}
+      <div className="flex items-center gap-12">
         <button
-          onClick={onCancel}
-          className="text-white/20 text-sm tracking-widest uppercase hover:text-white/50 transition-colors py-3 pr-4"
+          onPointerDown={handleEnd}
+          className="text-white/25 text-xs tracking-widest uppercase py-4 px-4"
+          style={{ touchAction: 'manipulation' }}
         >
           end
         </button>
+
         <button
-          onClick={togglePause}
-          className="w-12 h-12 rounded-full border border-white/15 flex items-center justify-center hover:border-white/30 transition-all active:scale-95"
+          onPointerDown={togglePause}
+          className="w-12 h-12 rounded-full border border-white/15 flex items-center justify-center active:border-white/40"
+          style={{ touchAction: 'manipulation' }}
         >
           {paused ? (
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M3 2L12 7L3 12V2Z" fill="white" fillOpacity={0.6} />
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M2.5 1.5L10 6L2.5 10.5V1.5Z" fill="white" fillOpacity={0.7} />
             </svg>
           ) : (
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <rect x="3" y="2" width="3" height="10" rx="1" fill="white" fillOpacity={0.6} />
-              <rect x="8" y="2" width="3" height="10" rx="1" fill="white" fillOpacity={0.6} />
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <rect x="2.5" y="1.5" width="2.5" height="9" rx="1" fill="white" fillOpacity={0.7} />
+              <rect x="7" y="1.5" width="2.5" height="9" rx="1" fill="white" fillOpacity={0.7} />
             </svg>
           )}
         </button>

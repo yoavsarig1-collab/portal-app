@@ -14,6 +14,11 @@
   -webkit-font-smoothing: antialiased;
 }
 
+button, a {
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -22,7 +27,6 @@ html, body {
   height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
-  touch-action: none;
 }
 
 textarea {
