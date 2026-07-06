@@ -1,11 +1,16 @@
 import { practices, Practice, Domain, Volume } from './practices'
-import { getTimeState, timeStateWeights, timeStateVolumeWeights, yoavProfile } from './profile'
+import { getTimeState, timeStateWeights, timeStateVolumeWeights } from './profile'
 import { getContext, locationTagBoosts, stateTagBoosts, fieldTagBoosts } from './context'
+import { getActivePerson } from './people'
 
-const STORAGE_KEY = 'portal_history'
 const SKIP_COOLDOWN_MS = 2 * 60 * 60 * 1000
 const COMPLETE_COOLDOWN_MS = 4 * 60 * 60 * 1000
 const NEGLECT_THRESHOLD = 10
+
+function historyKey(): string {
+  const person = getActivePerson()
+  return `portal_history_${person?.id ?? 'default'}`
+}
 
 export interface SessionEntry {
   practiceId: string
@@ -23,7 +28,7 @@ export interface SessionEntry {
 export function getHistory(): SessionEntry[] {
   if (typeof window === 'undefined') return []
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+    return JSON.parse(localStorage.getItem(historyKey()) || '[]')
   } catch {
     return []
   }
@@ -32,7 +37,7 @@ export function getHistory(): SessionEntry[] {
 export function saveEntry(entry: SessionEntry) {
   const history = getHistory()
   history.unshift(entry)
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(0, 500)))
+  localStorage.setItem(historyKey(), JSON.stringify(history.slice(0, 500)))
 }
 
 function domainRecency(history: SessionEntry[]): Record<Domain, number> {
@@ -79,8 +84,10 @@ function score(p: Practice, history: SessionEntry[], now: number): number {
   const neglectBoost = recency[p.domain] > NEGLECT_THRESHOLD ? 1.4 : 1.0
 
   // profile interest boosts
-  const interestMatch = hasTag(p, yoavProfile.interests) ? 1.2 : 1.0
-  const seekingMatch = hasTag(p, yoavProfile.seekingNow) ? 1.3 : 1.0
+  const person = getActivePerson()
+  const interestMatch = person && hasTag(p, person.profile.interests) ? 1.2 : 1.0
+  const seekingMatch = person && hasTag(p, person.profile.seekingNow) ? 1.3 : 1.0
+  const avoidPenalty = person && hasTag(p, person.profile.avoids) ? 0.3 : 1.0
 
   // context boosts — location, state, field
   const locationBoost = hasTag(p, locationTagBoosts[ctx.location]) ? 1.5 : 1.0
@@ -104,6 +111,7 @@ function score(p: Practice, history: SessionEntry[], now: number): number {
     neglectBoost *
     interestMatch *
     seekingMatch *
+    avoidPenalty *
     locationBoost *
     stateBoost *
     fieldBoost *

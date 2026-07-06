@@ -6,23 +6,26 @@ import PracticeCard from '@/components/PracticeCard'
 import Timer from '@/components/Timer'
 import Reflection from '@/components/Reflection'
 import ContextSelector from '@/components/ContextSelector'
+import PersonSelector from '@/components/PersonSelector'
 import History from '@/components/History'
 import { getNextPractice, recordSkip, recordComplete } from '@/lib/engine'
 import { getContext, UserContext } from '@/lib/context'
+import { Person, getActivePerson, isActivePersonFresh } from '@/lib/people'
 import { Practice, domainColors } from '@/lib/practices'
 
-type Phase = 'context' | 'card' | 'timer' | 'reflection'
+type Phase = 'person' | 'context' | 'card' | 'timer' | 'reflection'
 type Overlay = 'history' | null
 
 export default function Portal() {
   const [practice, setPractice] = useState<Practice | null>(null)
-  const [phase, setPhase] = useState<Phase>('context')
+  const [phase, setPhase] = useState<Phase>('person')
   const [overlay, setOverlay] = useState<Overlay>(null)
   const [recentIds, setRecentIds] = useState<string[]>([])
   const [ctx, setCtx] = useState<UserContext | null>(null)
+  const [person, setPerson] = useState<Person | null>(null)
   const cardShownAt = useRef<number>(Date.now())
 
-  useEffect(() => {
+  function enterContextPhase() {
     const saved = getContext()
     // if context was set in last 3 hours, skip the selector
     if (saved.setAt && Date.now() - saved.setAt < 3 * 60 * 60 * 1000) {
@@ -32,7 +35,23 @@ export default function Portal() {
       setCtx(saved)
       setPhase('context')
     }
+  }
+
+  useEffect(() => {
+    if (isActivePersonFresh()) {
+      setPerson(getActivePerson())
+      enterContextPhase()
+    } else {
+      setPhase('person')
+    }
   }, [])
+
+  const handlePersonDone = (p: Person) => {
+    setPerson(p)
+    setPractice(null)
+    setRecentIds([])
+    enterContextPhase()
+  }
 
   const advance = useCallback((exclude: string[] = []) => {
     const next = getNextPractice(exclude)
@@ -74,7 +93,7 @@ export default function Portal() {
     advance(newRecent)
   }
 
-  if (!ctx) return null
+  if (!ctx && phase !== 'person') return null
 
   const color = practice ? domainColors[practice.domain] : '#ffffff'
 
@@ -115,8 +134,33 @@ export default function Portal() {
         )}
       </AnimatePresence>
 
+      {/* Person switch — visible on card phase */}
+      <AnimatePresence>
+        {phase === 'card' && overlay === null && person && (
+          <motion.button
+            onClick={() => setPhase('person')}
+            className="fixed top-10 left-8 z-40 flex items-center gap-1.5 py-2 pr-4 group"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ delay: 1.5, duration: 0.6 }}
+          >
+            <span className="text-white/15 text-xs tracking-widest uppercase group-hover:text-white/40 transition-colors">
+              {person.name}
+            </span>
+          </motion.button>
+        )}
+      </AnimatePresence>
+
       {/* Main phases */}
       <AnimatePresence mode="wait">
+        {phase === 'person' && (
+          <PersonSelector
+            key="person"
+            onDone={handlePersonDone}
+          />
+        )}
+
         {phase === 'context' && ctx && (
           <ContextSelector
             key="context"
