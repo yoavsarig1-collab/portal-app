@@ -7,11 +7,13 @@ import Timer from '@/components/Timer'
 import Reflection from '@/components/Reflection'
 import ContextSelector from '@/components/ContextSelector'
 import History from '@/components/History'
+import Onboarding from '@/components/Onboarding'
 import { getNextPractice, recordSkip, recordComplete } from '@/lib/engine'
 import { getContext, UserContext } from '@/lib/context'
+import { getUserProfile } from '@/lib/userProfile'
 import { Practice, domainColors } from '@/lib/practices'
 
-type Phase = 'context' | 'card' | 'timer' | 'reflection'
+type Phase = 'onboarding' | 'context' | 'card' | 'timer' | 'reflection'
 type Overlay = 'history' | null
 
 export default function Portal() {
@@ -24,12 +26,16 @@ export default function Portal() {
 
   useEffect(() => {
     const saved = getContext()
+    setCtx(saved)
+    // first visit — no profile yet, onboard before anything else
+    if (!getUserProfile()) {
+      setPhase('onboarding')
+      return
+    }
     // if context was set in last 3 hours, skip the selector
     if (saved.setAt && Date.now() - saved.setAt < 3 * 60 * 60 * 1000) {
-      setCtx(saved)
       setPhase('card')
     } else {
-      setCtx(saved)
       setPhase('context')
     }
   }, [])
@@ -117,6 +123,13 @@ export default function Portal() {
 
       {/* Main phases */}
       <AnimatePresence mode="wait">
+        {phase === 'onboarding' && (
+          <Onboarding
+            key="onboarding"
+            onDone={() => setPhase('context')}
+          />
+        )}
+
         {phase === 'context' && ctx && (
           <ContextSelector
             key="context"

@@ -1,6 +1,7 @@
 import { practices, Practice, Domain, Volume } from './practices'
-import { getTimeState, timeStateWeights, timeStateVolumeWeights, yoavProfile } from './profile'
+import { getTimeState, timeStateWeights, timeStateVolumeWeights } from './profile'
 import { getContext, locationTagBoosts, stateTagBoosts, fieldTagBoosts } from './context'
+import { getUserProfile } from './userProfile'
 
 const STORAGE_KEY = 'portal_history'
 const SKIP_COOLDOWN_MS = 2 * 60 * 60 * 1000
@@ -79,8 +80,9 @@ function score(p: Practice, history: SessionEntry[], now: number): number {
   const neglectBoost = recency[p.domain] > NEGLECT_THRESHOLD ? 1.4 : 1.0
 
   // profile interest boosts
-  const interestMatch = hasTag(p, yoavProfile.interests) ? 1.2 : 1.0
-  const seekingMatch = hasTag(p, yoavProfile.seekingNow) ? 1.3 : 1.0
+  const profile = getUserProfile()
+  const interestMatch = profile && hasTag(p, profile.interests) ? 1.2 : 1.0
+  const seekingMatch = profile && hasTag(p, profile.seekingNow) ? 1.3 : 1.0
 
   // context boosts — location, state, field
   const locationBoost = hasTag(p, locationTagBoosts[ctx.location]) ? 1.5 : 1.0

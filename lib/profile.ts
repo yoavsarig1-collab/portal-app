@@ -1,16 +1,5 @@
 import type { Domain, Volume } from './practices'
 
-// Yoav's starting profile — informed by conversation
-export const yoavProfile = {
-  interests: ['music', 'djing', 'surfing', 'basketball', 'nature', 'drawing', 'collage', 'writing'],
-  seekingNow: ['play', 'presence', 'relaxation'],
-  currentPractice: ['gym', 'running', 'group-workouts'],
-  wantsToReturn: ['movement', 'yoga', 'basketball', 'surfing'],
-  avoids: ['sustained-presence', 'long-reading', 'deep-learning'],
-  adhd: true,
-  nightOwl: true,
-}
-
 // Time of day → state profile name
 export type TimeState = 'wake' | 'reset' | 'train' | 'play' | 'land' | 'deep-night'
 
