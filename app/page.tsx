@@ -8,13 +8,16 @@ import Reflection from '@/components/Reflection'
 import ContextSelector from '@/components/ContextSelector'
 import History from '@/components/History'
 import Onboarding from '@/components/Onboarding'
+import Account from '@/components/Account'
 import { getNextPractice, recordSkip, recordComplete } from '@/lib/engine'
 import { getContext, UserContext } from '@/lib/context'
 import { getUserProfile } from '@/lib/userProfile'
+import { cloudEnabled } from '@/lib/supabase'
+import { onAuthChange, fullSync } from '@/lib/sync'
 import { Practice, domainColors } from '@/lib/practices'
 
 type Phase = 'onboarding' | 'context' | 'card' | 'timer' | 'reflection'
-type Overlay = 'history' | null
+type Overlay = 'history' | 'account' | null
 
 export default function Portal() {
   const [practice, setPractice] = useState<Practice | null>(null)
@@ -22,7 +25,20 @@ export default function Portal() {
   const [overlay, setOverlay] = useState<Overlay>(null)
   const [recentIds, setRecentIds] = useState<string[]>([])
   const [ctx, setCtx] = useState<UserContext | null>(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
   const cardShownAt = useRef<number>(Date.now())
+
+  // optional cloud account — sync once whenever a session appears
+  useEffect(() => {
+    if (!cloudEnabled) return
+    const unsubscribe = onAuthChange(email => {
+      setUserEmail(prev => {
+        if (email && email !== prev) fullSync().catch(() => {})
+        return email
+      })
+    })
+    return unsubscribe
+  }, [])
 
   useEffect(() => {
     const saved = getContext()
@@ -103,6 +119,22 @@ export default function Portal() {
         )}
       </AnimatePresence>
 
+      {/* Account button — visible on card phase, only when cloud save is configured */}
+      <AnimatePresence>
+        {cloudEnabled && phase === 'card' && overlay === null && (
+          <motion.button
+            onClick={() => setOverlay('account')}
+            className="fixed bottom-6 right-8 text-white/15 text-xs tracking-widest uppercase z-40 py-2 hover:text-white/40 transition-colors"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ delay: 1.5, duration: 0.6 }}
+          >
+            {userEmail ? 'synced' : 'save'}
+          </motion.button>
+        )}
+      </AnimatePresence>
+
       {/* Context reset — visible on card phase */}
       <AnimatePresence>
         {phase === 'card' && overlay === null && ctx && (
@@ -171,6 +203,9 @@ export default function Portal() {
       <AnimatePresence>
         {overlay === 'history' && (
           <History key="history" onClose={() => setOverlay(null)} />
+        )}
+        {overlay === 'account' && (
+          <Account key="account" userEmail={userEmail} onClose={() => setOverlay(null)} />
         )}
       </AnimatePresence>
     </main>

@@ -34,6 +34,8 @@ export function saveEntry(entry: SessionEntry) {
   const history = getHistory()
   history.unshift(entry)
   localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(0, 500)))
+  // mirror to cloud when signed in — fire and forget, local is the source of truth
+  import('./sync').then(s => s.pushEntry(entry)).catch(() => {})
 }
 
 function domainRecency(history: SessionEntry[]): Record<Domain, number> {

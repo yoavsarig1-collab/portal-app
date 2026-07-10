@@ -51,4 +51,6 @@ export function getUserProfile(): UserProfile | null {
 
 export function saveUserProfile(profile: UserProfile) {
   localStorage.setItem(PROFILE_KEY, JSON.stringify(profile))
+  // mirror to cloud when signed in — fire and forget, local is the source of truth
+  import('./sync').then(s => s.pushProfile(profile)).catch(() => {})
 }
