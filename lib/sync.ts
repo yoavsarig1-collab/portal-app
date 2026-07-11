@@ -36,6 +36,15 @@ export function onAuthChange(cb: (userEmail: string | null) => void): () => void
   return () => data.subscription.unsubscribe()
 }
 
+// --- beta feedback ---
+
+export async function sendFeedback(message: string): Promise<{ error?: string }> {
+  if (!supabase) return { error: 'not available' }
+  const name = getUserProfile()?.name ?? null
+  const { error } = await supabase.from('feedback').insert({ name, message })
+  return error ? { error: error.message } : {}
+}
+
 // --- push: local → cloud ---
 
 export async function pushProfile(profile?: UserProfile) {

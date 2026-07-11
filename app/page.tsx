@@ -9,6 +9,7 @@ import ContextSelector from '@/components/ContextSelector'
 import History from '@/components/History'
 import Onboarding from '@/components/Onboarding'
 import Account from '@/components/Account'
+import Feedback from '@/components/Feedback'
 import { getNextPractice, recordSkip, recordComplete } from '@/lib/engine'
 import { getContext, UserContext } from '@/lib/context'
 import { getUserProfile } from '@/lib/userProfile'
@@ -17,7 +18,7 @@ import { onAuthChange, fullSync } from '@/lib/sync'
 import { Practice, domainColors } from '@/lib/practices'
 
 type Phase = 'onboarding' | 'context' | 'card' | 'timer' | 'reflection'
-type Overlay = 'history' | 'account' | null
+type Overlay = 'history' | 'account' | 'feedback' | null
 
 export default function Portal() {
   const [practice, setPractice] = useState<Practice | null>(null)
@@ -119,6 +120,22 @@ export default function Portal() {
         )}
       </AnimatePresence>
 
+      {/* Feedback button — visible on card phase, only when cloud is configured */}
+      <AnimatePresence>
+        {cloudEnabled && phase === 'card' && overlay === null && (
+          <motion.button
+            onClick={() => setOverlay('feedback')}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 text-white/15 text-xs tracking-widest uppercase z-40 py-2 hover:text-white/40 transition-colors"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ delay: 1.5, duration: 0.6 }}
+          >
+            feedback
+          </motion.button>
+        )}
+      </AnimatePresence>
+
       {/* Account button — visible on card phase, only when cloud save is configured */}
       <AnimatePresence>
         {cloudEnabled && phase === 'card' && overlay === null && (
@@ -206,6 +223,9 @@ export default function Portal() {
         )}
         {overlay === 'account' && (
           <Account key="account" userEmail={userEmail} onClose={() => setOverlay(null)} />
+        )}
+        {overlay === 'feedback' && (
+          <Feedback key="feedback" onClose={() => setOverlay(null)} />
         )}
       </AnimatePresence>
     </main>

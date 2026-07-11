@@ -29,3 +29,17 @@ create policy "own profile" on public.profiles
 
 create policy "own history" on public.history
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- beta feedback: anyone may leave a note, nobody may read them through the app
+-- (Yoav reads them in the Supabase dashboard: Table Editor → feedback)
+create table public.feedback (
+  id bigint generated always as identity primary key,
+  created_at timestamptz not null default now(),
+  name text,
+  message text not null check (char_length(message) between 1 and 2000)
+);
+
+alter table public.feedback enable row level security;
+
+create policy "anyone can leave feedback" on public.feedback
+  for insert to anon, authenticated with check (true);
