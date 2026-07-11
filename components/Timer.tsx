@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { animate as anime } from 'animejs'
 
 interface TimerProps {
   durationSeconds: number
@@ -17,88 +18,140 @@ function formatTime(s: number) {
   return `${m}:${sec.toString().padStart(2, '0')}`
 }
 
-// One expanding ripple ring
-function Ripple({ color, delay, size }: { color: string; delay: number; size: number }) {
-  return (
-    <motion.div
-      className="absolute rounded-full"
-      style={{
-        width: size,
-        height: size,
-        border: `0.5px solid ${color}`,
-        left: '50%',
-        top: '50%',
-        x: '-50%',
-        y: '-50%',
-      }}
-      initial={{ scale: 0.05, opacity: 0.7 }}
-      animate={{ scale: 1, opacity: 0 }}
-      transition={{
-        duration: 4,
-        delay,
-        repeat: Infinity,
-        repeatDelay: 0,
-        ease: [0.2, 0.6, 0.4, 1],
-      }}
-    />
-  )
+// --- Single-source water ---
+// A drop lands at the center at an uneven, breathing rhythm. Perfect circles,
+// physics-first: fast impact that settles slowly, every successive ring slower
+// and fainter than the one before, the line thinning as it widens, thin short
+// glints riding the leading edge. Pausing stills the water.
+
+function lighten(hex: string, amount: number): string {
+  const n = parseInt(hex.slice(1), 16)
+  const mix = (c: number) => Math.round(c + (255 - c) * amount)
+  const r = mix((n >> 16) & 255), g = mix((n >> 8) & 255), b = mix(n & 255)
+  return `rgb(${r}, ${g}, ${b})`
 }
 
-// A single falling drop
-function Drop({ color, paused }: { color: string; paused: boolean }) {
-  return (
-    <motion.div
-      className="absolute rounded-full"
-      style={{
-        width: 3,
-        height: 5,
-        backgroundColor: color,
-        left: '50%',
-        x: '-50%',
-        top: '30%',
-        opacity: 0.6,
-        borderRadius: '50% 50% 50% 50% / 60% 60% 40% 40%',
-      }}
-      animate={paused ? {} : {
-        y: [0, 60],
-        opacity: [0, 0.7, 0],
-        scaleY: [1, 1.3, 0.8],
-      }}
-      transition={{
-        duration: 2.2,
-        repeat: Infinity,
-        repeatDelay: 1.4,
-        ease: 'easeIn',
-      }}
-    />
-  )
-}
+const SVG_NS = 'http://www.w3.org/2000/svg'
 
-// Rising air particles
-function AirParticle({ color, x, delay }: { color: string; x: number; delay: number }) {
+function WaterSource({ color, paused }: { color: string; paused: boolean }) {
+  const svgRef = useRef<SVGSVGElement>(null)
+  const pausedRef = useRef(paused)
+  pausedRef.current = paused
+  // anime.js returns an animation object with pause/play/cancel
+  const animsRef = useRef<Set<ReturnType<typeof anime>>>(new Set())
+  const dropTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const anims = animsRef.current
+    const glintColor = lighten(color, 0.45)
+
+    const spawnDrop = (scale: number) => {
+      const R = 118 * scale
+      const rings = [
+        { delay: 0,    dur: 14000, maxR: R,        sw: 1.6, op: 0.55 },
+        { delay: 1100, dur: 18500, maxR: R * 0.8,  sw: 1.1, op: 0.34 },
+        { delay: 2600, dur: 23000, maxR: R * 0.62, sw: 0.8, op: 0.2 },
+      ]
+      rings.forEach((ring, ri) => {
+        const c = document.createElementNS(SVG_NS, 'circle')
+        c.setAttribute('cx', '150'); c.setAttribute('cy', '150'); c.setAttribute('r', '0')
+        c.setAttribute('fill', 'none'); c.setAttribute('stroke', color)
+        c.setAttribute('stroke-width', String(ring.sw)); c.setAttribute('opacity', '0')
+        svg.appendChild(c)
+
+        let glint: SVGCircleElement | null = null
+        if (ri === 0) {
+          glint = document.createElementNS(SVG_NS, 'circle')
+          glint.setAttribute('cx', '150'); glint.setAttribute('cy', '150'); glint.setAttribute('r', '0')
+          glint.setAttribute('fill', 'none'); glint.setAttribute('stroke', glintColor)
+          glint.setAttribute('pathLength', '100')
+          glint.setAttribute('stroke-dasharray', '1.4 30 1 38 1.7 27.9')
+          glint.setAttribute('stroke-linecap', 'round')
+          glint.setAttribute('opacity', '0')
+          svg.appendChild(glint)
+        }
+
+        const state = { t: 0, spin: 0 }
+        const easeOutQuint = (t: number) => 1 - Math.pow(1 - t, 5)
+        const draw = () => {
+          const p = easeOutQuint(state.t)
+          const r = 3 + p * ring.maxR
+          const rise = Math.min(1, state.t / 0.06)
+          const fall = 1 - Math.pow(state.t, 1.6)
+          const o = ring.op * rise * fall
+          const sw = ring.sw * (1 - p * 0.75)
+          c.setAttribute('r', r.toFixed(1))
+          c.setAttribute('opacity', o.toFixed(3))
+          c.setAttribute('stroke-width', sw.toFixed(2))
+          if (glint) {
+            glint.setAttribute('r', r.toFixed(1))
+            glint.setAttribute('opacity', (o * 1.15).toFixed(3))
+            glint.setAttribute('stroke-width', (sw * 0.75).toFixed(2))
+            glint.setAttribute('stroke-dashoffset', (state.spin * 100).toFixed(1))
+          }
+        }
+
+        const grow = anime(state, {
+          t: 1,
+          duration: ring.dur,
+          delay: ring.delay,
+          ease: 'linear',
+          onUpdate: draw,
+          onComplete: () => {
+            c.remove(); glint?.remove()
+            anims.delete(grow)
+          },
+        })
+        anims.add(grow)
+        if (glint) {
+          const spin = anime(state, {
+            spin: 1, duration: ring.dur, ease: 'outSine',
+            onComplete: () => anims.delete(spin),
+          })
+          anims.add(spin)
+        }
+        if (pausedRef.current) { /* spawned while paused shouldn't happen, but stay safe */ }
+        draw()
+      })
+    }
+
+    const scheduleNext = () => {
+      dropTimerRef.current = setTimeout(() => {
+        if (!pausedRef.current) spawnDrop(0.85 + Math.random() * 0.3)
+        scheduleNext()
+      }, 9000 + Math.random() * 9000)
+    }
+
+    spawnDrop(1)
+    const early = setTimeout(() => { if (!pausedRef.current) spawnDrop(0.7) }, 1400)
+    scheduleNext()
+
+    return () => {
+      clearTimeout(early)
+      if (dropTimerRef.current) clearTimeout(dropTimerRef.current)
+      anims.forEach(a => a.cancel())
+      anims.clear()
+      while (svg.firstChild) svg.removeChild(svg.firstChild)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [color])
+
+  // pausing stills the water
+  useEffect(() => {
+    const anims = animsRef.current
+    if (paused) anims.forEach(a => a.pause())
+    else anims.forEach(a => a.play())
+  }, [paused])
+
   return (
-    <motion.div
-      className="absolute rounded-full"
-      style={{
-        width: 1.5,
-        height: 1.5,
-        backgroundColor: color,
-        left: `calc(50% + ${x}px)`,
-        bottom: '32%',
-        opacity: 0,
-      }}
-      animate={{
-        y: [0, -80],
-        opacity: [0, 0.35, 0],
-        x: [0, x > 0 ? 6 : -6],
-      }}
-      transition={{
-        duration: 4.5,
-        delay,
-        repeat: Infinity,
-        repeatDelay: 2,
-        ease: 'easeOut',
-      }}
+    <motion.svg
+      ref={svgRef}
+      width={300} height={300} viewBox="0 0 300 300"
+      className="absolute inset-0"
+      animate={{ opacity: paused ? 0.45 : 1 }}
+      transition={{ duration: 1.2, ease: 'easeOut' }}
     />
   )
 }
@@ -166,10 +219,13 @@ export default function Timer({ durationSeconds, color, onComplete, onCancel }: 
       exit={{ opacity: 0 }}
       transition={{ duration: 1.0, ease: 'easeOut' }}
     >
-      {/* Elemental scene */}
+      {/* Water scene */}
       <div className="relative flex items-center justify-center" style={{ width: 300, height: 300 }}>
 
-        {/* Outer progress arc — very subtle */}
+        {/* Single-source ripples */}
+        <WaterSource color={color} paused={paused} />
+
+        {/* Progress arc — very subtle */}
         <svg
           width={300} height={300}
           className="absolute inset-0"
@@ -194,36 +250,12 @@ export default function Timer({ durationSeconds, color, onComplete, onCancel }: 
           />
         </svg>
 
-        {/* Ripples — water element */}
-        {[0, 1, 2, 3].map(i => (
-          <Ripple key={i} color={color} delay={i * 1.0} size={200} />
-        ))}
-
-        {/* Inner tight ripples */}
-        {[0, 1].map(i => (
-          <Ripple key={`inner-${i}`} color={color} delay={i * 1.0} size={80} />
-        ))}
-
-        {/* Air particles — rising */}
-        {[-18, -8, 0, 8, 18].map((x, i) => (
-          <AirParticle key={i} color={color} x={x} delay={i * 0.9} />
-        ))}
-
-        {/* Falling drop — water element */}
-        <Drop color={color} paused={paused} />
-
-        {/* Central orb */}
+        {/* Still center point, barely breathing */}
         <motion.div
           className="absolute rounded-full"
-          style={{ width: 6, height: 6, backgroundColor: color, left: '50%', top: '50%', x: '-50%', y: '-50%' }}
-          animate={{
-            opacity: paused ? [0.2, 0.5, 0.2] : [0.6, 1, 0.6],
-            scale: paused ? [1, 1, 1] : [1, 1.4, 1],
-            boxShadow: paused
-              ? [`0 0 6px 2px ${color}20`]
-              : [`0 0 8px 3px ${color}30`, `0 0 16px 6px ${color}50`, `0 0 8px 3px ${color}30`],
-          }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+          style={{ width: 4, height: 4, backgroundColor: color, left: '50%', top: '50%', x: '-50%', y: '-50%' }}
+          animate={{ opacity: paused ? 0.25 : [0.3, 0.55, 0.3] }}
+          transition={paused ? { duration: 1 } : { duration: 5.2, repeat: Infinity, ease: 'easeInOut' }}
         />
       </div>
 

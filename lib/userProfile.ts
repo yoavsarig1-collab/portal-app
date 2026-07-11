@@ -13,7 +13,6 @@ export interface UserProfile {
 export const interestOptions: { tag: string; label: string }[] = [
   { tag: 'movement', label: 'movement' },
   { tag: 'music', label: 'music' },
-  { tag: 'djing', label: 'djing' },
   { tag: 'drawing', label: 'drawing' },
   { tag: 'art', label: 'visual art' },
   { tag: 'writing', label: 'writing' },
